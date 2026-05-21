@@ -131,7 +131,9 @@ func TestGetLookerSDK_ClientIPPropagation(t *testing.T) {
 			serverReceivedHeaders[k] = v
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"id": 123}`))
+		if _, err := w.Write([]byte(`{"id": 123}`)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer ts.Close()
 
