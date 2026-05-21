@@ -4,9 +4,6 @@
 # vscode
 .vscode/
 
-# jetskicli
-.jetskicli/
-
 # idea
 .idea/
 
