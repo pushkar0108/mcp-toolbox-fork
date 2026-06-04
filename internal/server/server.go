@@ -35,7 +35,6 @@ import (
 	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/render"
 	"github.com/googleapis/mcp-toolbox/internal/auth"
-	"github.com/googleapis/mcp-toolbox/internal/auth/generic"
 	"github.com/googleapis/mcp-toolbox/internal/embeddingmodels"
 	"github.com/googleapis/mcp-toolbox/internal/log"
 	"github.com/googleapis/mcp-toolbox/internal/prompts"
@@ -436,7 +435,7 @@ func NewServer(ctx context.Context, cfg ServerConfig) (*Server, error) {
 	// Host OAuth Protected Resource Metadata endpoint
 	mcpAuthEnabled := false
 	for _, authSvc := range s.ResourceMgr.GetAuthServiceMap() {
-		if genCfg, ok := authSvc.ToConfig().(generic.Config); ok && genCfg.McpEnabled {
+		if mSvc, ok := authSvc.(auth.MCPAuthService); ok && mSvc.IsMCPEnabled() {
 			mcpAuthEnabled = true
 			break
 		}
@@ -512,10 +511,10 @@ func mcpAuthMiddleware(s *Server) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Find McpEnabled auth service
-			var mcpSvc *generic.AuthService
+			var mcpSvc auth.MCPAuthService
 			for _, authSvc := range s.ResourceMgr.GetAuthServiceMap() {
-				if genSvc, ok := authSvc.(*generic.AuthService); ok && genSvc.McpEnabled {
-					mcpSvc = genSvc
+				if mSvc, ok := authSvc.(auth.MCPAuthService); ok && mSvc.IsMCPEnabled() {
+					mcpSvc = mSvc
 					break
 				}
 			}
@@ -528,7 +527,7 @@ func mcpAuthMiddleware(s *Server) func(http.Handler) http.Handler {
 
 			claims, err := mcpSvc.ValidateMCPAuth(r.Context(), r.Header)
 			if err != nil {
-				var mcpErr *generic.MCPAuthError
+				var mcpErr *auth.MCPAuthError
 				if errors.As(err, &mcpErr) {
 					switch mcpErr.Code {
 					case http.StatusUnauthorized:
