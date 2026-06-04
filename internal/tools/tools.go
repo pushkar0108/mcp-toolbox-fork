@@ -65,7 +65,6 @@ func DecodeConfig(ctx context.Context, resourceType string, name string, decoder
 	return toolConfig, nil
 }
 
-
 type ToolConfig interface {
 	ToolConfigType() string
 	Initialize(map[string]sources.Source) (Tool, error)

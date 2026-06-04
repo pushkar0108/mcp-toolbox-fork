@@ -1000,4 +1000,3 @@ baseUrl: http://example.com
 		}
 	})
 }
-
