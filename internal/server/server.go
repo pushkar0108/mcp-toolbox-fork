@@ -215,7 +215,7 @@ func InitializeConfigs(ctx context.Context, cfg ServerConfig) (
 	toolsetsMap := make(map[string]tools.Toolset)
 	for name, tc := range cfg.ToolsetConfigs {
 		if cfg.IgnoreUnknownTools {
-			var filteredToolNames []string
+			filteredToolNames := make([]string, 0, len(tc.ToolNames))
 			for _, tn := range tc.ToolNames {
 				if _, ok := toolsMap[tn]; ok {
 					filteredToolNames = append(filteredToolNames, tn)
