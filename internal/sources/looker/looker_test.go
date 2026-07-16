@@ -323,11 +323,11 @@ func TestGetHostURL(t *testing.T) {
 	responseBody = []byte(`Internal Server Error`)
 	requestCount = 0
 
-	// First failure call - should hit server and fallback to BaseUrl
+	// First failure call - should hit server and fallback to BaseUrl, returning error
 	expectedFallback := strings.TrimSuffix(ts.URL, "/")
 	urlFail1, err := src.GetHostURL(ctx, sdk)
-	if err != nil {
-		t.Fatalf("GetHostURL unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected GetHostURL to return an error on failure")
 	}
 	if urlFail1 != expectedFallback {
 		t.Errorf("expected fallback URL to be %q, got %q", expectedFallback, urlFail1)
@@ -336,10 +336,10 @@ func TestGetHostURL(t *testing.T) {
 		t.Errorf("expected exactly 1 request for failed fetch, got %d", requestCount)
 	}
 
-	// Second call within 1 minute - should immediately return fallback without hitting server
+	// Second call within 1 minute - should immediately return fallback without hitting server, returning cached error
 	urlFail2, err := src.GetHostURL(ctx, sdk)
-	if err != nil {
-		t.Fatalf("GetHostURL unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected GetHostURL to return an error on cached failure")
 	}
 	if urlFail2 != expectedFallback {
 		t.Errorf("expected fallback URL to be %q, got %q", expectedFallback, urlFail2)

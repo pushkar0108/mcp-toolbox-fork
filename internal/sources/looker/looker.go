@@ -161,6 +161,7 @@ type Source struct {
 	cachedHostURL   string
 	lastFetchTime   time.Time
 	lastFetchFailed bool
+	lastFetchErr    error
 	hostURLGroup    singleflight.Group
 }
 
@@ -303,8 +304,9 @@ func (s *Source) GetHostURL(ctx context.Context, sdk *v4.LookerSDK) (string, err
 		if urlStr == "" {
 			urlStr = defaultURL
 		}
+		err := s.lastFetchErr
 		s.hostURLMu.RUnlock()
-		return urlStr, nil
+		return urlStr, err
 	}
 	s.hostURLMu.RUnlock()
 
@@ -317,6 +319,15 @@ func (s *Source) GetHostURL(ctx context.Context, sdk *v4.LookerSDK) (string, err
 			s.hostURLMu.RUnlock()
 			return urlStr, nil
 		}
+		if s.lastFetchFailed && time.Since(s.lastFetchTime) < time.Minute {
+			urlStr := s.cachedHostURL
+			if urlStr == "" {
+				urlStr = defaultURL
+			}
+			err := s.lastFetchErr
+			s.hostURLMu.RUnlock()
+			return urlStr, err
+		}
 		s.hostURLMu.RUnlock()
 
 		logger, err := util.LoggerFromContext(ctx)
@@ -327,30 +338,37 @@ func (s *Source) GetHostURL(ctx context.Context, sdk *v4.LookerSDK) (string, err
 		// Perform network call outside of locks to prevent blocking concurrent readers
 		versionInfo, err := sdk.Versions("", s.ApiSettings)
 		if err != nil || versionInfo.WebServerUrl == nil || *versionInfo.WebServerUrl == "" {
+			fetchErr := err
+			if fetchErr == nil {
+				fetchErr = fmt.Errorf("empty web_server_url in versions payload")
+			}
 			s.hostURLMu.Lock()
 			s.lastFetchFailed = true
 			s.lastFetchTime = time.Now()
+			s.lastFetchErr = fetchErr
 			// DO NOT overwrite s.cachedHostURL on transient errors; keep the stale valid URL for stale fallbacks
 			s.hostURLMu.Unlock()
 
 			if err != nil {
 				logger.WarnContext(ctx, fmt.Sprintf("unable to retrieve host_url via versions, using stale/default fallback: %v", err))
-				return "", err
+			} else {
+				logger.DebugContext(ctx, "versions web_server_url is empty, using stale/default fallback")
 			}
-			logger.DebugContext(ctx, "versions web_server_url is empty, using stale/default fallback")
-			return "", fmt.Errorf("empty web_server_url in versions payload")
+			return "", fetchErr
 		}
 
 		// Validate the retrieved host_url is a valid absolute HTTP/HTTPS URL
 		valURL := *versionInfo.WebServerUrl
 		u, err := url.Parse(valURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			parseErr := fmt.Errorf("invalid web_server_url format: %q", valURL)
 			s.hostURLMu.Lock()
 			s.lastFetchFailed = true
 			s.lastFetchTime = time.Now()
+			s.lastFetchErr = parseErr
 			s.hostURLMu.Unlock()
 			logger.WarnContext(ctx, fmt.Sprintf("invalid host_url setting retrieved %q, using stale/default fallback: %v", valURL, err))
-			return "", fmt.Errorf("invalid web_server_url format: %q", valURL)
+			return "", parseErr
 		}
 
 		resolvedURL := strings.TrimSuffix(valURL, "/")
@@ -359,6 +377,7 @@ func (s *Source) GetHostURL(ctx context.Context, sdk *v4.LookerSDK) (string, err
 		s.cachedHostURL = resolvedURL
 		s.lastFetchTime = time.Now()
 		s.lastFetchFailed = false
+		s.lastFetchErr = nil
 		s.hostURLMu.Unlock()
 
 		logger.DebugContext(ctx, "successfully fetched and cached host_url: "+resolvedURL)
@@ -370,9 +389,9 @@ func (s *Source) GetHostURL(ctx context.Context, sdk *v4.LookerSDK) (string, err
 		s.hostURLMu.RLock()
 		defer s.hostURLMu.RUnlock()
 		if s.cachedHostURL != "" {
-			return s.cachedHostURL, nil
+			return s.cachedHostURL, err
 		}
-		return defaultURL, nil
+		return defaultURL, err
 	}
 
 	return res.(string), nil
